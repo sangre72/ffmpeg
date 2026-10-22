@@ -321,7 +321,14 @@ static int d3d11va_frames_init(AVHWFramesContext *ctx)
         ctx->initial_pool_size = texDesc2.ArraySize;
         hwctx->BindFlags = texDesc2.BindFlags;
         hwctx->MiscFlags = texDesc2.MiscFlags;
-    } else if (texDesc.ArraySize > 0) {
+    } else if (texDesc.ArraySize > 0 &&
+               !(texDesc.ArraySize > 2 &&
+                 (texDesc.BindFlags & (D3D11_BIND_RENDER_TARGET | D3D11_BIND_VIDEO_ENCODER)) &&
+                 (av_pix_fmt_desc_get(ctx->sw_format)->flags & AV_PIX_FMT_FLAG_PLANAR))) {
+        /* Planar YUV (NV12, P010, ...) texture arrays with more than 2 slices
+         * cannot be bound as render target or video encoder input: the D3D11
+         * runtime rejects them with E_INVALIDARG (NVIDIA and Intel alike).
+         * Such pools (e.g. scale_d3d11 output) use single textures instead. */
         hr = ID3D11Device_CreateTexture2D(device_hwctx->device, &texDesc, NULL, &hwctx->texture);
         if (FAILED(hr)) {
             av_log(ctx, AV_LOG_ERROR, "Could not create the texture (%lx)\n", (long)hr);
