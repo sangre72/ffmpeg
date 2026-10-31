@@ -311,6 +311,7 @@ typedef struct NvencContext
     int ldkfs;
     int extra_sei;
     int intra_refresh;
+    int reconf_idr;
     int single_slice_intra_refresh;
     int constrained_encoding;
     int udu_sei;

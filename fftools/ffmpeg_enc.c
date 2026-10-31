@@ -38,6 +38,14 @@
 
 #include "libavcodec/avcodec.h"
 
+static atomic_int_least64_t req_bit_rate;
+
+void enc_request_bitrate(int64_t bit_rate)
+{
+    if (bit_rate > 0)
+        atomic_store(&req_bit_rate, bit_rate);
+}
+
 typedef struct EncoderPriv {
     Encoder        e;
 
@@ -643,6 +651,19 @@ static int encode_frame(OutputFile *of, OutputStream *ost, AVFrame *frame,
 
         if (frame->sample_aspect_ratio.num && !ost->frame_aspect_ratio.num)
             enc->sample_aspect_ratio = frame->sample_aspect_ratio;
+
+        if (enc->codec_type == AVMEDIA_TYPE_VIDEO && enc->bit_rate > 0) {
+            int64_t b = atomic_exchange(&req_bit_rate, 0);
+            if (b > 0 && b != enc->bit_rate) {
+                /* maxrate and the VBV size keep their ratio to the rate */
+                if (enc->rc_max_rate > 0)
+                    enc->rc_max_rate = av_rescale(enc->rc_max_rate, b, enc->bit_rate);
+                if (enc->rc_buffer_size > 0)
+                    enc->rc_buffer_size = av_rescale(enc->rc_buffer_size, b, enc->bit_rate);
+                av_log(e, AV_LOG_INFO, "bitrate %"PRId64" -> %"PRId64"\n", enc->bit_rate, b);
+                enc->bit_rate = b;
+            }
+        }
     }
 
     update_benchmark(NULL);

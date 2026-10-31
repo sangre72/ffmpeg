@@ -921,6 +921,9 @@ int enc_open(void *opaque, const AVFrame *frame);
 
 int enc_loopback(Encoder *enc);
 
+/* runtime video bitrate (stdin key 'b'): the video encoder applies it before its next frame */
+void enc_request_bitrate(int64_t bit_rate);
+
 /*
  * Initialize muxing state for the given stream, should be called
  * after the codec/streamcopy setup has been done.

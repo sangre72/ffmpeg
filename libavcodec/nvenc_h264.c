@@ -225,6 +225,8 @@ static const AVOption options[] = {
                                                             OFFSET(udu_sei),      AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "intra-refresh","Use Periodic Intra Refresh instead of IDR frames",
                                                             OFFSET(intra_refresh),AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+    { "reconf_idr",   "Reset the encoder and force an IDR when the bitrate is reconfigured at runtime (0 = rate change in place)",
+                                                            OFFSET(reconf_idr),   AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
     { "single-slice-intra-refresh", "Use single slice intra refresh",
                                                             OFFSET(single_slice_intra_refresh), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "max_slice_size", "Maximum encoded slice size in bytes",

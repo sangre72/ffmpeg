@@ -833,6 +833,19 @@ static int check_keyboard_interaction(int64_t cur_time)
         av_log(NULL, AV_LOG_INFO, "\n\n[q] command received. Exiting.\n\n");
         return AVERROR_EXIT;
     }
+    if (key == 'b') {
+        char buf[32];
+        int k, n = 0, miss = 0;
+        while ((k = read_key()) != '\n' && k != '\r' && n < sizeof(buf) - 1) {
+            if (k > 0)
+                buf[n++] = k;
+            else if (k == 0 || ++miss > 100000)
+                break;
+        }
+        buf[n] = 0;
+        if (k == '\n' || k == '\r')
+            enc_request_bitrate(strtoll(buf, NULL, 10));
+    }
     if (key == '+') av_log_set_level(av_log_get_level()+10);
     if (key == '-') av_log_set_level(av_log_get_level()-10);
     if (key == 'c' || key == 'C'){
@@ -871,6 +884,7 @@ static int check_keyboard_interaction(int64_t cur_time)
                         "?      show this help\n"
                         "+      increase verbosity\n"
                         "-      decrease verbosity\n"
+                        "b      Set the video bitrate: b<bits per second> + newline\n"
                         "c      Send command to first matching filter supporting it\n"
                         "C      Send/Queue command to all matching filters\n"
                         "h      dump packets/hex press to cycle through the 3 states\n"

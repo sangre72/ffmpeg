@@ -3012,8 +3012,8 @@ static void reconfig_encoder(AVCodecContext *avctx, const AVFrame *frame)
         }
 
         if (reconfig_bitrate) {
-            params.resetEncoder = 1;
-            params.forceIDR = 1;
+            params.resetEncoder = !!ctx->reconf_idr;
+            params.forceIDR = !!ctx->reconf_idr;
 
             needs_encode_config = 1;
             needs_reconfig = 1;
