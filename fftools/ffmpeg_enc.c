@@ -46,6 +46,13 @@ void enc_request_bitrate(int64_t bit_rate)
         atomic_store(&req_bit_rate, bit_rate);
 }
 
+static atomic_int req_keyframe;
+
+void enc_request_keyframe(void)
+{
+    atomic_store(&req_keyframe, 1);
+}
+
 typedef struct EncoderPriv {
     Encoder        e;
 
@@ -823,6 +830,12 @@ static int frame_encode(OutputStream *ost, AVFrame *frame, AVPacket *pkt)
         if (type == AVMEDIA_TYPE_VIDEO) {
             frame->quality   = e->enc_ctx->global_quality;
             frame->pict_type = forced_kf_apply(e, &ost->kf, frame);
+            if (atomic_exchange(&req_keyframe, 0)) {
+                /* nvenc: -forced-idr 1 turns this into an IDR (default = intra only) */
+                frame->pict_type = AV_PICTURE_TYPE_I;
+                frame->flags    |= AV_FRAME_FLAG_KEY;
+                av_log(e, AV_LOG_INFO, "forced key frame\n");
+            }
 
 #if FFMPEG_OPT_TOP
             if (ost->top_field_first >= 0) {

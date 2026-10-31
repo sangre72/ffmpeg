@@ -846,6 +846,8 @@ static int check_keyboard_interaction(int64_t cur_time)
         if (k == '\n' || k == '\r')
             enc_request_bitrate(strtoll(buf, NULL, 10));
     }
+    if (key == 'k')
+        enc_request_keyframe();
     if (key == '+') av_log_set_level(av_log_get_level()+10);
     if (key == '-') av_log_set_level(av_log_get_level()-10);
     if (key == 'c' || key == 'C'){
@@ -888,6 +890,7 @@ static int check_keyboard_interaction(int64_t cur_time)
                         "c      Send command to first matching filter supporting it\n"
                         "C      Send/Queue command to all matching filters\n"
                         "h      dump packets/hex press to cycle through the 3 states\n"
+                        "k      Force a key frame on the next video frame\n"
                         "q      quit\n"
                         "s      Show QP histogram\n"
         );

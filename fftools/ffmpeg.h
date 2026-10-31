@@ -923,6 +923,8 @@ int enc_loopback(Encoder *enc);
 
 /* runtime video bitrate (stdin key 'b'): the video encoder applies it before its next frame */
 void enc_request_bitrate(int64_t bit_rate);
+/* forced key frame (stdin key 'k'): the next video frame is sent as AV_PICTURE_TYPE_I */
+void enc_request_keyframe(void);
 
 /*
  * Initialize muxing state for the given stream, should be called
