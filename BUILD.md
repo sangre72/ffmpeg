@@ -1,7 +1,16 @@
 # Patched FFmpeg 8.1 (n8.1.3-17) — D3D11 planar render-target array fix
 
-This repository holds the complete source of the FFmpeg build that ships with TeslaTune, as the
+This repository holds the complete source of the FFmpeg build that ships with Colibre, as the
 LGPL requires: the upstream tree, one patch, and the build instructions. It contains no other code.
+
+## Releases
+
+| Tag | Build | Libraries inside ffmpeg.exe |
+|---|---|---|
+| `n8.1.3-17-d3d11fix-r2` (current, 2026-11-01) | BtbN image pinned by digest (`sha256:2e5ac613…`, BtbN FFmpeg-Builds [5ece6289](https://github.com/BtbN/FFmpeg-Builds/tree/5ece62897c650b863c1ddda7b6964845344aef2d)), BtbN flags **minus chromaprint and libzvbi** | no GPL code. The source of every LGPL/MPL library (exact pinned commit) is attached to the release as `.tar.gz`. |
+| `n8.1.3-17-d3d11fix` (2026-10-23) | BtbN `win64-lgpl-8.1:latest` of that day (FFmpeg-Builds [93786836](https://github.com/BtbN/FFmpeg-Builds/tree/937868360a21d711ec94a33f5591d345ad9b7754)) | contained chromaprint with FFTW3 (GPL-2.0-or-later) and zvbi, so that binary is also under GPL-3.0; the full source of all its libraries, FFTW3 included, is attached to that release. Replaced by r2. |
+
+The only difference in features between the two: r2 has no `chromaprint` muxer and no `libzvbi_teletext` decoder.
 
 ## What is here
 
@@ -36,9 +45,9 @@ The build uses BtbN's FFmpeg-Builds image for win64 / LGPL / 8.1, with the same 
 ```sh
 git clone https://github.com/sangre72/ffmpeg.git ffsrc
 mkdir out
-docker pull ghcr.io/btbn/ffmpeg-builds/win64-lgpl-8.1:latest
+docker pull ghcr.io/btbn/ffmpeg-builds/win64-lgpl-8.1@sha256:2e5ac613c1142d618f588620df68a518a94ca427e080855660f8d94a5d4b2925
 docker run --rm -v "$PWD/out:/ffbuild" -v "$PWD/ffsrc:/src:ro" \
-  ghcr.io/btbn/ffmpeg-builds/win64-lgpl-8.1:latest bash /src/build/build_in_btbn_image.sh
+  ghcr.io/btbn/ffmpeg-builds/win64-lgpl-8.1@sha256:2e5ac613c1142d618f588620df68a518a94ca427e080855660f8d94a5d4b2925 bash /src/build/build_in_btbn_image.sh
 ```
 
 - The result is `out/out/ffmpeg.exe` and `out/out/ffprobe.exe`, plus the license files.
@@ -62,6 +71,7 @@ Configure line of the result, as printed by `ffmpeg -buildconf` (variant `win64-
 --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame
 --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-vapoursynth --disable-libvidstab --enable-libvvenc
 --disable-whisper --disable-libx264 --disable-libx265 --disable-libxavs2 --disable-libxvid --enable-libzimg --enable-libzvbi
+--disable-chromaprint --disable-libzvbi   (r2: appended by build/build_in_btbn_image.sh, see below)
 ```
 
 ## License
