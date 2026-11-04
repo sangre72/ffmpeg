@@ -1,0 +1,83 @@
+From 4e7c721223d16c2a343e277742dbc8a98031e0bd Mon Sep 17 00:00:00 2001
+From: Lee BumSuk <panic.hill@gmail.com>
+Date: Sat, 31 Oct 2026 21:12:19 +0900
+Subject: [PATCH] fftools: stdin key k forces a key frame on the next video
+ frame
+
+a2326 (teslatube desk): gap recover / rekey (the page needs an IDR after
+skipped frames) without a new encoder process. With nvenc pass
+-forced-idr 1 so the forced picture is an IDR, not just intra.
+---
+ fftools/ffmpeg.c     |  3 +++
+ fftools/ffmpeg.h     |  2 ++
+ fftools/ffmpeg_enc.c | 13 +++++++++++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
+index 303dadade6..205f05f05b 100644
+--- a/fftools/ffmpeg.c
++++ b/fftools/ffmpeg.c
+@@ -846,6 +846,8 @@ static int check_keyboard_interaction(int64_t cur_time)
+         if (k == '\n' || k == '\r')
+             enc_request_bitrate(strtoll(buf, NULL, 10));
+     }
++    if (key == 'k')
++        enc_request_keyframe();
+     if (key == '+') av_log_set_level(av_log_get_level()+10);
+     if (key == '-') av_log_set_level(av_log_get_level()-10);
+     if (key == 'c' || key == 'C'){
+@@ -888,6 +890,7 @@ static int check_keyboard_interaction(int64_t cur_time)
+                         "c      Send command to first matching filter supporting it\n"
+                         "C      Send/Queue command to all matching filters\n"
+                         "h      dump packets/hex press to cycle through the 3 states\n"
++                        "k      Force a key frame on the next video frame\n"
+                         "q      quit\n"
+                         "s      Show QP histogram\n"
+         );
+diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
+index e5abe6a516..ff431c5c2a 100644
+--- a/fftools/ffmpeg.h
++++ b/fftools/ffmpeg.h
+@@ -923,6 +923,8 @@ int enc_loopback(Encoder *enc);
+ 
+ /* runtime video bitrate (stdin key 'b'): the video encoder applies it before its next frame */
+ void enc_request_bitrate(int64_t bit_rate);
++/* forced key frame (stdin key 'k'): the next video frame is sent as AV_PICTURE_TYPE_I */
++void enc_request_keyframe(void);
+ 
+ /*
+  * Initialize muxing state for the given stream, should be called
+diff --git a/fftools/ffmpeg_enc.c b/fftools/ffmpeg_enc.c
+index 056ae4dbce..d8ea93e7d2 100644
+--- a/fftools/ffmpeg_enc.c
++++ b/fftools/ffmpeg_enc.c
+@@ -46,6 +46,13 @@ void enc_request_bitrate(int64_t bit_rate)
+         atomic_store(&req_bit_rate, bit_rate);
+ }
+ 
++static atomic_int req_keyframe;
++
++void enc_request_keyframe(void)
++{
++    atomic_store(&req_keyframe, 1);
++}
++
+ typedef struct EncoderPriv {
+     Encoder        e;
+ 
+@@ -823,6 +830,12 @@ static int frame_encode(OutputStream *ost, AVFrame *frame, AVPacket *pkt)
+         if (type == AVMEDIA_TYPE_VIDEO) {
+             frame->quality   = e->enc_ctx->global_quality;
+             frame->pict_type = forced_kf_apply(e, &ost->kf, frame);
++            if (atomic_exchange(&req_keyframe, 0)) {
++                /* nvenc: -forced-idr 1 turns this into an IDR (default = intra only) */
++                frame->pict_type = AV_PICTURE_TYPE_I;
++                frame->flags    |= AV_FRAME_FLAG_KEY;
++                av_log(e, AV_LOG_INFO, "forced key frame\n");
++            }
+ 
+ #if FFMPEG_OPT_TOP
+             if (ost->top_field_first >= 0) {
+-- 
+2.52.0.windows.1
+

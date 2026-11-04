@@ -1,0 +1,149 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Lee BumSuk <panic.hill@gmail.com>
+Date: Sat, 31 Oct 2026 19:00:00 +0900
+Subject: [PATCH] fftools: runtime video bitrate on stdin (b<bps>); nvenc: reconf_idr
+
+a2314 (teslatube desk): an ABR rate step without a new encoder process.
+- fftools: key b + "<bits per second>\n" on stdin -> the video encoder sets
+  bit_rate (maxrate / bufsize keep their ratio) before its next frame.
+- nvenc: option reconf_idr (default 1 = upstream: reset + IDR on a runtime
+  bitrate change); 0 = NVENC reconfigures the rate in place, no IDR.
+---
+diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
+index b394243..303dada 100644
+--- a/fftools/ffmpeg.c
++++ b/fftools/ffmpeg.c
+@@ -833,6 +833,19 @@ static int check_keyboard_interaction(int64_t cur_time)
+         av_log(NULL, AV_LOG_INFO, "\n\n[q] command received. Exiting.\n\n");
+         return AVERROR_EXIT;
+     }
++    if (key == 'b') {
++        char buf[32];
++        int k, n = 0, miss = 0;
++        while ((k = read_key()) != '\n' && k != '\r' && n < sizeof(buf) - 1) {
++            if (k > 0)
++                buf[n++] = k;
++            else if (k == 0 || ++miss > 100000)
++                break;
++        }
++        buf[n] = 0;
++        if (k == '\n' || k == '\r')
++            enc_request_bitrate(strtoll(buf, NULL, 10));
++    }
+     if (key == '+') av_log_set_level(av_log_get_level()+10);
+     if (key == '-') av_log_set_level(av_log_get_level()-10);
+     if (key == 'c' || key == 'C'){
+@@ -871,6 +884,7 @@ static int check_keyboard_interaction(int64_t cur_time)
+                         "?      show this help\n"
+                         "+      increase verbosity\n"
+                         "-      decrease verbosity\n"
++                        "b      Set the video bitrate: b<bits per second> + newline\n"
+                         "c      Send command to first matching filter supporting it\n"
+                         "C      Send/Queue command to all matching filters\n"
+                         "h      dump packets/hex press to cycle through the 3 states\n"
+diff --git a/fftools/ffmpeg.h b/fftools/ffmpeg.h
+index 3e33438..e5abe6a 100644
+--- a/fftools/ffmpeg.h
++++ b/fftools/ffmpeg.h
+@@ -921,6 +921,9 @@ int enc_open(void *opaque, const AVFrame *frame);
+ 
+ int enc_loopback(Encoder *enc);
+ 
++/* runtime video bitrate (stdin key 'b'): the video encoder applies it before its next frame */
++void enc_request_bitrate(int64_t bit_rate);
++
+ /*
+  * Initialize muxing state for the given stream, should be called
+  * after the codec/streamcopy setup has been done.
+diff --git a/fftools/ffmpeg_enc.c b/fftools/ffmpeg_enc.c
+index a595912..056ae4d 100644
+--- a/fftools/ffmpeg_enc.c
++++ b/fftools/ffmpeg_enc.c
+@@ -38,6 +38,14 @@
+ 
+ #include "libavcodec/avcodec.h"
+ 
++static atomic_int_least64_t req_bit_rate;
++
++void enc_request_bitrate(int64_t bit_rate)
++{
++    if (bit_rate > 0)
++        atomic_store(&req_bit_rate, bit_rate);
++}
++
+ typedef struct EncoderPriv {
+     Encoder        e;
+ 
+@@ -643,6 +651,19 @@ static int encode_frame(OutputFile *of, OutputStream *ost, AVFrame *frame,
+ 
+         if (frame->sample_aspect_ratio.num && !ost->frame_aspect_ratio.num)
+             enc->sample_aspect_ratio = frame->sample_aspect_ratio;
++
++        if (enc->codec_type == AVMEDIA_TYPE_VIDEO && enc->bit_rate > 0) {
++            int64_t b = atomic_exchange(&req_bit_rate, 0);
++            if (b > 0 && b != enc->bit_rate) {
++                /* maxrate and the VBV size keep their ratio to the rate */
++                if (enc->rc_max_rate > 0)
++                    enc->rc_max_rate = av_rescale(enc->rc_max_rate, b, enc->bit_rate);
++                if (enc->rc_buffer_size > 0)
++                    enc->rc_buffer_size = av_rescale(enc->rc_buffer_size, b, enc->bit_rate);
++                av_log(e, AV_LOG_INFO, "bitrate %"PRId64" -> %"PRId64"\n", enc->bit_rate, b);
++                enc->bit_rate = b;
++            }
++        }
+     }
+ 
+     update_benchmark(NULL);
+diff --git a/libavcodec/nvenc.c b/libavcodec/nvenc.c
+index 4def151..d712f14 100644
+--- a/libavcodec/nvenc.c
++++ b/libavcodec/nvenc.c
+@@ -3012,8 +3012,8 @@ static void reconfig_encoder(AVCodecContext *avctx, const AVFrame *frame)
+         }
+ 
+         if (reconfig_bitrate) {
+-            params.resetEncoder = 1;
+-            params.forceIDR = 1;
++            params.resetEncoder = !!ctx->reconf_idr;
++            params.forceIDR = !!ctx->reconf_idr;
+ 
+             needs_encode_config = 1;
+             needs_reconfig = 1;
+diff --git a/libavcodec/nvenc.h b/libavcodec/nvenc.h
+index 46f1d9f..80f7c48 100644
+--- a/libavcodec/nvenc.h
++++ b/libavcodec/nvenc.h
+@@ -311,6 +311,7 @@ typedef struct NvencContext
+     int ldkfs;
+     int extra_sei;
+     int intra_refresh;
++    int reconf_idr;
+     int single_slice_intra_refresh;
+     int constrained_encoding;
+     int udu_sei;
+diff --git a/libavcodec/nvenc_h264.c b/libavcodec/nvenc_h264.c
+index 842e4ee..7dab959 100644
+--- a/libavcodec/nvenc_h264.c
++++ b/libavcodec/nvenc_h264.c
+@@ -225,6 +225,8 @@ static const AVOption options[] = {
+                                                             OFFSET(udu_sei),      AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+     { "intra-refresh","Use Periodic Intra Refresh instead of IDR frames",
+                                                             OFFSET(intra_refresh),AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
++    { "reconf_idr",   "Reset the encoder and force an IDR when the bitrate is reconfigured at runtime (0 = rate change in place)",
++                                                            OFFSET(reconf_idr),   AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
+     { "single-slice-intra-refresh", "Use single slice intra refresh",
+                                                             OFFSET(single_slice_intra_refresh), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+     { "max_slice_size", "Maximum encoded slice size in bytes",
+diff --git a/libavcodec/nvenc_hevc.c b/libavcodec/nvenc_hevc.c
+index 31624f4..8307331 100644
+--- a/libavcodec/nvenc_hevc.c
++++ b/libavcodec/nvenc_hevc.c
+@@ -205,6 +205,8 @@ static const AVOption options[] = {
+                                                             OFFSET(udu_sei),      AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
+     { "intra-refresh","Use Periodic Intra Refresh instead of IDR frames",
+                                                             OFFSET(intra_refresh),AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
++    { "reconf_idr",   "Reset the encoder and force an IDR when the bitrate is reconfigured at runtime (0 = rate change in place)",
++                                                            OFFSET(reconf_idr),   AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
+     { "single-slice-intra-refresh", "Use single slice intra refresh",
+                                                             OFFSET(single_slice_intra_refresh), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
+     { "max_slice_size", "Maximum encoded slice size in bytes",

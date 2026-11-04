@@ -1,13 +1,14 @@
-# Patched FFmpeg 8.1 (n8.1.3-17) — D3D11 planar render-target array fix
+# Patched FFmpeg 8.1 (n8.1.3-17) — D3D11 planar render-target array fix, live bitrate, forced key frame
 
 This repository holds the complete source of the FFmpeg build that ships with Colibre, as the
-LGPL requires: the upstream tree, one patch, and the build instructions. It contains no other code.
+LGPL requires: the upstream tree, three patches, and the build instructions. It contains no other code.
 
 ## Releases
 
 | Tag | Build | Libraries inside ffmpeg.exe |
 |---|---|---|
-| `n8.1.3-17-d3d11fix-r2` (current, 2026-11-01) | BtbN image pinned by digest (`sha256:2e5ac613…`, BtbN FFmpeg-Builds [5ece6289](https://github.com/BtbN/FFmpeg-Builds/tree/5ece62897c650b863c1ddda7b6964845344aef2d)), BtbN flags **minus chromaprint and libzvbi** | no GPL code. The source of every LGPL/MPL library (exact pinned commit) is attached to the release as `.tar.gz`. |
+| `n8.1.3-17-d3d11fix-r3` (current, 2026-11-04) | exactly the r2 build (same image digest, same configure: BtbN flags **minus chromaprint and libzvbi**) plus patches 0002 and 0003 | no GPL code. `ffmpeg -buildconf` differs from r2 only in `--extra-version`. Library sources: the same pinned commits as r2 (same image); the tarballs are attached to this release too. |
+| `n8.1.3-17-d3d11fix-r2` (2026-11-01) | BtbN image pinned by digest (`sha256:2e5ac613…`, BtbN FFmpeg-Builds [5ece6289](https://github.com/BtbN/FFmpeg-Builds/tree/5ece62897c650b863c1ddda7b6964845344aef2d)), BtbN flags **minus chromaprint and libzvbi** | no GPL code. The source of every LGPL/MPL library (exact pinned commit) is attached to the release as `.tar.gz`. |
 | `n8.1.3-17-d3d11fix` (2026-10-23) | BtbN `win64-lgpl-8.1:latest` of that day (FFmpeg-Builds [93786836](https://github.com/BtbN/FFmpeg-Builds/tree/937868360a21d711ec94a33f5591d345ad9b7754)) | contained chromaprint with FFTW3 (GPL-2.0-or-later) and zvbi, so that binary is also under GPL-3.0; the full source of all its libraries, FFTW3 included, is attached to that release. Replaced by r2. |
 
 The only difference in features between the two: r2 has no `chromaprint` muxer and no `libzvbi_teletext` decoder.
@@ -17,9 +18,12 @@ The only difference in features between the two: r2 has no `chromaprint` muxer a
 | Commit | Content |
 |---|---|
 | `FFmpeg n8.1.3-17-gc389840894 ... unmodified snapshot` | upstream FFmpeg `release/8.1` at [c389840894](https://github.com/FFmpeg/FFmpeg/commit/c389840894), byte-identical (git tree `e46ac2edfb9f0ac016a137a3333e45043eb6a732`). This is the source of BtbN's `ffmpeg-n8.1.3-17-gc389840894-win64-lgpl-8.1` build. |
-| `avutil/hwcontext_d3d11va: no array textures for planar render-target/encoder pools` | the only modification (`libavutil/hwcontext_d3d11va.c`, +8 / −1) |
+| `avutil/hwcontext_d3d11va: no array textures for planar render-target/encoder pools` | patch 0001 (`libavutil/hwcontext_d3d11va.c`, +8 / −1) |
+| `fftools: runtime video bitrate on stdin (b<bps>); nvenc: reconf_idr` | patch 0002 (r3): stdin key `b<bps>` + newline sets the video encoder bit rate (maxrate/bufsize in the same ratio) before its next frame; NVENC option `-reconf_idr 0` applies a runtime rate change without an encoder reset or IDR (default 1 = upstream behaviour) |
+| `fftools: stdin key k forces a key frame on the next video frame` | patch 0003 (r3): stdin key `k` sends the next video frame as a key frame (with NVENC `-forced-idr 1` an IDR); listed in the `?` help |
+| `build: --extra-version from FF_XV` | build script only: the version suffix can be set per release (`-e FF_XV=20261104-r3`) |
 
-- `patches/0001-hwcontext_d3d11va-no-planar-rt-arrays.patch` holds the same change as a `git format-patch` file. It applies to upstream c389840894 with `git am`.
+- `patches/0001-…`, `patches/0002-…`, `patches/0003-…` hold the same changes as `git format-patch` files. They apply in order to upstream c389840894 with `git am`.
 - `build/build_in_btbn_image.sh` is the build script.
 
 ## Why the patch
@@ -52,7 +56,7 @@ docker run --rm -v "$PWD/out:/ffbuild" -v "$PWD/ffsrc:/src:ro" \
 
 - The result is `out/out/ffmpeg.exe` and `out/out/ffprobe.exe`, plus the license files.
 - It takes about 10 minutes on 24 cores.
-- Build another branch with `-e BRANCH=<name>`.
+- Build another branch with `-e BRANCH=<name>`; r3 was built from its tag with `-e FF_XV=20261104-r3`.
 
 Configure line of the result, as printed by `ffmpeg -buildconf` (variant `win64-lgpl-8.1`):
 
