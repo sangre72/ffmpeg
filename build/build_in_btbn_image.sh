@@ -15,7 +15,7 @@ cd ffmpeg
     --extra-cflags="$FF_CFLAGS" --extra-cxxflags="$FF_CXXFLAGS" --extra-libs="$FF_LIBS" \
     --extra-ldflags="$FF_LDFLAGS" --extra-ldexeflags="$FF_LDEXEFLAGS" \
     --cc="$CC" --cxx="$CXX" --ar="$AR" --ranlib="$RANLIB" --nm="$NM" \
-    --extra-version="20261101-r2" || { tail -50 ffbuild/config.log; exit 1; }
+    --extra-version="${FF_XV:-20261101-r2}" || { tail -50 ffbuild/config.log; exit 1; }
 make -j"$(nproc)"
 make install
 mkdir -p /ffbuild/out
