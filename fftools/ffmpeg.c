@@ -54,6 +54,9 @@
 #if HAVE_SETCONSOLECTRLHANDLER
 #include <windows.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #if HAVE_SYS_SELECT_H
 #include <sys/select.h>
@@ -1003,6 +1006,24 @@ int main(int argc, char **argv)
     BenchmarkTimeStamps ti;
 
     init_dynload();
+
+#ifdef _WIN32
+    {
+        /* colibre a3462: env TT_FF_TIMER1=1 -> ask 1 ms timer resolution for this process. Since Win10 2004 the
+         * resolution is per process and ffmpeg never asks, so ddagrab's Sleep()/AcquireNextFrame waits snap to
+         * 15.6 ms ticks (frame clumps + 60-150 ms holes). Resolved at runtime: no new link dependency. */
+        const char *tt = getenv("TT_FF_TIMER1");
+        if (tt && tt[0] == '1') {
+            HMODULE wm = LoadLibraryW(L"winmm.dll");
+            if (wm) {
+                typedef UINT (WINAPI *tbp_fn)(UINT);
+                tbp_fn tbp = (tbp_fn)(void (*)(void))GetProcAddress(wm, "timeBeginPeriod");
+                if (tbp)
+                    tbp(1);
+            }
+        }
+    }
+#endif
 
     setvbuf(stderr,NULL,_IONBF,0); /* win32 runtime needs this */
 
