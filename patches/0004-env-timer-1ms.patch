@@ -1,0 +1,57 @@
+From afdc9482974e278b5c02dad4518657b6d8fdb77a Mon Sep 17 00:00:00 2001
+From: Lee BumSuk <panic.hill@gmail.com>
+Date: Tue, 17 Nov 2026 15:43:39 +0900
+Subject: [PATCH] fftools: env TT_FF_TIMER1=1 asks 1 ms timer resolution
+ (Windows)
+
+a3462 (colibre desk): ddagrab paces with Sleep() + AcquireNextFrame
+timeouts; ffmpeg.exe never asks a timer resolution, and since Windows 10
+2004 it is per process, so every wait snaps to 15.6 ms ticks: frames
+clump and 60-150 ms holes appear. Opt-in by env so other callers see
+no change; winmm resolved at runtime.
+---
+ fftools/ffmpeg.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
+index b394243..f005280 100644
+--- a/fftools/ffmpeg.c
++++ b/fftools/ffmpeg.c
+@@ -54,6 +54,9 @@
+ #if HAVE_SETCONSOLECTRLHANDLER
+ #include <windows.h>
+ #endif
++#ifdef _WIN32
++#include <windows.h>
++#endif
+ 
+ #if HAVE_SYS_SELECT_H
+ #include <sys/select.h>
+@@ -987,6 +990,24 @@ int main(int argc, char **argv)
+ 
+     init_dynload();
+ 
++#ifdef _WIN32
++    {
++        /* colibre a3462: env TT_FF_TIMER1=1 -> ask 1 ms timer resolution for this process. Since Win10 2004 the
++         * resolution is per process and ffmpeg never asks, so ddagrab's Sleep()/AcquireNextFrame waits snap to
++         * 15.6 ms ticks (frame clumps + 60-150 ms holes). Resolved at runtime: no new link dependency. */
++        const char *tt = getenv("TT_FF_TIMER1");
++        if (tt && tt[0] == '1') {
++            HMODULE wm = LoadLibraryW(L"winmm.dll");
++            if (wm) {
++                typedef UINT (WINAPI *tbp_fn)(UINT);
++                tbp_fn tbp = (tbp_fn)(void (*)(void))GetProcAddress(wm, "timeBeginPeriod");
++                if (tbp)
++                    tbp(1);
++            }
++        }
++    }
++#endif
++
+     setvbuf(stderr,NULL,_IONBF,0); /* win32 runtime needs this */
+ 
+     av_log_set_flags(AV_LOG_SKIP_REPEATED);
+-- 
+2.52.0.windows.1
+
